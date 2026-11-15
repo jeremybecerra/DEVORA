@@ -1,0 +1,49 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>DEVORA - Panel Restaurante</title>
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <h1>DEVORA</h1>
+
+    <h2>Panel del restaurante</h2>
+
+    <p>Bienvenido al sistema de gestión de pedidos.</p>
+
+    <h3>Pedidos registrados</h3>
+
+
+<label>Seleccionar mesa:</label>
+
+<select id="filtroMesa">
+    <option value="todas">Todas las mesas</option>
+    <option value="5">Mesa 5</option>
+    <option value="3">Mesa 3</option>
+</select>
+
+
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Mesa</th>
+                <th>Comensal</th>
+                <th>Productos</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+
+        <tbody id="pedidos">
+        </tbody>
+    </table>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+{
+  "info": {
+    "name": "DEVORA API",
+    "description": "Pruebas manuales del backend de DEVORA. Ejecutar en orden con el servidor en marcha (npm start). Cada solicitud verifica su resultado y guarda los ids que usa la siguiente.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "mesaId", "value": "01" },
+    { "key": "comensalId", "value": "" },
+    { "key": "pedidoId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Salud del servidor",
+      "request": { "method": "GET", "url": "{{baseUrl}}/salud" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Responde 200 y estado ok', () => {",
+        "  pm.response.to.have.status(200);",
+        "  pm.expect(pm.response.json().estado).to.eql('ok');",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "2. Consultar mesa abierta",
+      "request": { "method": "GET", "url": "{{baseUrl}}/mesas/{{mesaId}}" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('La mesa existe y está abierta', () => {",
+        "  pm.response.to.have.status(200);",
+        "  pm.expect(pm.response.json().estado).to.eql('abierta');",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "3. Consultar menú",
+      "request": { "method": "GET", "url": "{{baseUrl}}/productos" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Devuelve una lista de productos con precio', () => {",
+        "  pm.response.to.have.status(200);",
+        "  const menu = pm.response.json();",
+        "  pm.expect(menu).to.be.an('array').that.is.not.empty;",
+        "  pm.expect(menu[0]).to.have.keys('id','nombre','descripcion','categoria','precio','disponible','imagenUrl','tiempoEstimado');",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "4. Registrar comensal",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/comensales",
+        "body": { "mode": "raw", "raw": "{\n  \"mesaId\": \"{{mesaId}}\",\n  \"nombre\": \"Pame\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Crea el comensal (201)', () => pm.response.to.have.status(201));",
+        "pm.collectionVariables.set('comensalId', pm.response.json().id);"
+      ] } }]
+    },
+    {
+      "name": "5. CA-01 · Crear pedido válido",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{$guid}}" }
+        ],
+        "url": "{{baseUrl}}/pedidos",
+        "body": { "mode": "raw", "raw": "{\n  \"mesaId\": \"{{mesaId}}\",\n  \"comensalId\": {{comensalId}},\n  \"items\": [\n    { \"productoId\": 1, \"cantidad\": 1 },\n    { \"productoId\": 4, \"cantidad\": 2 }\n  ]\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const pedido = pm.response.json();",
+        "pm.test('Registra el pedido (201)', () => pm.response.to.have.status(201));",
+        "pm.test('Calcula el total con el menú: 35 + 2 × 8 = 51', () => pm.expect(pedido.total).to.eql(51));",
+        "pm.test('Queda en estado recibido', () => pm.expect(pedido.estado).to.eql('recibido'));",
+        "pm.collectionVariables.set('pedidoId', pedido.id);"
+      ] } }]
+    },
+    {
+      "name": "6. CA-02 · Pedido vacío (inválido)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/pedidos",
+        "body": { "mode": "raw", "raw": "{\n  \"mesaId\": \"{{mesaId}}\",\n  \"comensalId\": {{comensalId}},\n  \"items\": []\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Rechaza el pedido vacío (400) y explica el motivo', () => {",
+        "  pm.response.to.have.status(400);",
+        "  pm.expect(pm.response.json().mensaje).to.include('al menos un producto');",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "7. Cantidad inválida (límite)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/pedidos",
+        "body": { "mode": "raw", "raw": "{\n  \"mesaId\": \"{{mesaId}}\",\n  \"comensalId\": {{comensalId}},\n  \"items\": [{ \"productoId\": 1, \"cantidad\": 0 }]\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Rechaza cantidad 0 (400) e indica el campo', () => {",
+        "  pm.response.to.have.status(400);",
+        "  pm.expect(pm.response.json().detalles[0].campo).to.eql('items[0].cantidad');",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "8. Producto agotado",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/pedidos",
+        "body": { "mode": "raw", "raw": "{\n  \"mesaId\": \"{{mesaId}}\",\n  \"comensalId\": {{comensalId}},\n  \"items\": [{ \"productoId\": 9, \"cantidad\": 1 }]\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Rechaza el producto agotado (409)', () => {",
+        "  pm.response.to.have.status(409);",
+        "  pm.expect(pm.response.json().codigo).to.eql('PRODUCTO_NO_DISPONIBLE');",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "9. Mesa cerrada",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/comensales",
+        "body": { "mode": "raw", "raw": "{\n  \"mesaId\": \"08\",\n  \"nombre\": \"Ana\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('No registra comensales en una mesa cerrada (409)', () => {",
+        "  pm.response.to.have.status(409);",
+        "  pm.expect(pm.response.json().codigo).to.eql('MESA_CERRADA');",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "10. Agregar productos al pedido",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/pedidos/{{pedidoId}}/items",
+        "body": { "mode": "raw", "raw": "{\n  \"items\": [{ \"productoId\": 5, \"cantidad\": 1 }]\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Suma la limonada al total: 51 + 12 = 63', () => {",
+        "  pm.response.to.have.status(200);",
+        "  pm.expect(pm.response.json().total).to.eql(63);",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "11. Panel · pedidos de la mesa",
+      "request": { "method": "GET", "url": "{{baseUrl}}/pedidos?mesaId={{mesaId}}" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Lista los pedidos con el nombre del comensal', () => {",
+        "  pm.response.to.have.status(200);",
+        "  const pedidos = pm.response.json();",
+        "  pm.expect(pedidos).to.be.an('array').that.is.not.empty;",
+        "  pm.expect(pedidos[0]).to.have.property('comensalNombre');",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "12. Panel · cambiar estado",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/pedidos/{{pedidoId}}/estado",
+        "body": { "mode": "raw", "raw": "{\n  \"estado\": \"en_preparacion\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Pasa a en_preparacion', () => {",
+        "  pm.response.to.have.status(200);",
+        "  pm.expect(pm.response.json().estado).to.eql('en_preparacion');",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "13. Pago (fuera del alcance)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/pedidos/{{pedidoId}}/pagos",
+        "body": { "mode": "raw", "raw": "{\n  \"metodo\": \"qr\",\n  \"propina\": 0\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Responde 501 con un mensaje para el usuario', () => {",
+        "  pm.response.to.have.status(501);",
+        "  pm.expect(pm.response.json().codigo).to.eql('NO_DISPONIBLE');",
+        "});"
+      ] } }]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "devora-backend",
+  "version": "1.0.0",
+  "description": "API REST de DEVORA: mesas, menú, comensales y pedidos individuales en mesas grupales.",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test --test-reporter=spec \"tests/**/*.test.js\"",
+    "test:mysql": "node --test --test-reporter=spec tests/repositorios.contrato.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "mysql2": "^3.11.5"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

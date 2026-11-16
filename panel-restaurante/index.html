@@ -7,28 +7,29 @@
           content="width=device-width, initial-scale=1.0">
 
     <title>DEVORA - Panel Restaurante</title>
-
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
     <h1>DEVORA</h1>
-
     <h2>Panel del restaurante</h2>
 
     <p>Bienvenido al sistema de gestión de pedidos.</p>
 
     <h3>Pedidos registrados</h3>
 
+    <label for="filtroMesa">Seleccionar mesa:</label>
 
-<label>Seleccionar mesa:</label>
+    <select id="filtroMesa">
+        <option value="todas">Todas las mesas</option>
+    </select>
 
-<select id="filtroMesa">
-    <option value="todas">Todas las mesas</option>
-    <option value="5">Mesa 5</option>
-    <option value="3">Mesa 3</option>
-</select>
+    <button id="actualizar" type="button">
+        Actualizar pedidos
+    </button>
 
+    <p id="estadoMesas" role="status"></p>
+    <p id="mensaje" role="status" aria-live="polite"></p>
 
     <table border="1">
         <thead>

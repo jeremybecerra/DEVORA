@@ -7,9 +7,7 @@ export class ApiError extends Error {
 
 // Adapter: the rest of the UI uses these methods, independently of HTTP details.
 export class HttpApi {
-  
-constructor(baseUrl = config.baseUrl, routes = config.routes, fetcher = (...args) => globalThis.fetch(...args)) {
-
+  constructor(baseUrl = config.baseUrl, routes = config.routes, fetcher = (...args) => globalThis.fetch(...args)) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.routes = routes;
     this.fetcher = fetcher;

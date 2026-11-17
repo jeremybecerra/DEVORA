@@ -24,13 +24,16 @@ export class PedidoService {
    * Crea el pedido de un comensal (criterio CA-01: pedido válido se registra con su total).
    * Devuelve { pedido, creado }: creado=false cuando la misma clave de idempotencia ya registró
    * un pedido, así un doble toque no duplica nada (CA-07).
+   * La clave se guarda junto al id del comensal: si otro comensal usa la misma clave,
+   * no recibe un pedido ajeno, sino que se crea el suyo.
    */
-  async crear(body, { claveIdempotencia: clave } = {}) {
+  async crear(body, { claveIdempotencia: claveRecibida } = {}) {
     const datos = requireBody(body);
     const mesaId = parseMesaId(datos.mesaId);
     const comensalId = parsePositiveId(datos.comensalId, 'comensalId', 'el comensal');
     const items = parseItems(datos.items);
-    const claveIdempotencia = parseIdempotencyKey(clave);
+    const clave = parseIdempotencyKey(claveRecibida);
+    const claveIdempotencia = clave ? `${comensalId}:${clave}` : null;
 
     if (claveIdempotencia) {
       const existente = await this.pedidos.buscarPorClaveIdempotencia(claveIdempotencia);

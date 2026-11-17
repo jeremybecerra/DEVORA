@@ -156,6 +156,17 @@ describe('Pedidos', () => {
     assert.equal((await api('GET', '/api/pedidos')).body.length, 1);
   });
 
+  it('CA-07: la misma clave usada por otro comensal no devuelve un pedido ajeno', async () => {
+    const ana = await registrarComensal(api, '01', 'Ana');
+    const luis = await registrarComensal(api, '02', 'Luis');
+    const deAna = await api('POST', '/api/pedidos', { mesaId: '01', comensalId: ana, items: [{ productoId: 1, cantidad: 1 }] }, { 'Idempotency-Key': 'clave-123' });
+    const deLuis = await api('POST', '/api/pedidos', { mesaId: '02', comensalId: luis, items: [{ productoId: 5, cantidad: 1 }] }, { 'Idempotency-Key': 'clave-123' });
+    assert.equal(deLuis.status, 201);
+    assert.notEqual(deLuis.body.id, deAna.body.id);
+    assert.equal(deLuis.body.comensalNombre, 'Luis');
+    assert.equal(deLuis.body.total, 12);
+  });
+
   it('GET /api/pedidos/:id devuelve el pedido; uno inexistente da 404', async () => {
     const comensalId = await registrarComensal(api);
     const creado = await api('POST', '/api/pedidos', { mesaId: '01', comensalId, items: [{ productoId: 2, cantidad: 1 }] });

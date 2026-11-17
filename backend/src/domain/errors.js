@@ -33,6 +33,16 @@ export class ConflictError extends AppError {
   }
 }
 
+/**
+ * 409: otro proceso modificó el mismo registro entre la lectura y la escritura (control optimista).
+ * Los servicios lo reintentan; solo llega al cliente si el conflicto persiste.
+ */
+export class ConcurrencyError extends AppError {
+  constructor(message = 'El pedido cambió mientras se actualizaba. Inténtalo de nuevo.') {
+    super(message, { status: 409, code: 'CONFLICTO_CONCURRENCIA' });
+  }
+}
+
 /** 501: la funcionalidad está prevista pero fuera del alcance del incremento actual. */
 export class NotImplementedError extends AppError {
   constructor(message) {

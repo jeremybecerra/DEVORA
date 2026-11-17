@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS pedidos (
   comensal_id         INT UNSIGNED  NOT NULL,
   estado              ENUM('recibido', 'en_preparacion', 'listo', 'entregado', 'cancelado') NOT NULL DEFAULT 'recibido',
   total               DECIMAL(10,2) NOT NULL,
+  version             INT UNSIGNED  NOT NULL DEFAULT 1,
   clave_idempotencia  VARCHAR(80)   NULL,
   creado_en           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

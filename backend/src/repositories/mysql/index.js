@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import { ConcurrencyError } from '../../domain/errors.js';
 
 /**
  * Implementación MySQL del contrato de repositorios.
@@ -57,12 +58,13 @@ export async function crearRepositoriosMysql(dbConfig) {
     estado: fila.estado,
     fecha: iso(fila.creado_en),
     actualizadoEn: iso(fila.actualizado_en),
+    version: fila.version,
     detalles,
     total: Number(fila.total),
   });
 
   const SELECT_PEDIDO = `
-    SELECT p.id, p.mesa_id, p.comensal_id, c.nombre AS comensal_nombre, p.estado, p.total, p.creado_en, p.actualizado_en
+    SELECT p.id, p.mesa_id, p.comensal_id, c.nombre AS comensal_nombre, p.estado, p.total, p.version, p.creado_en, p.actualizado_en
     FROM pedidos p
     JOIN comensales c ON c.id = p.comensal_id`;
 
@@ -88,6 +90,12 @@ export async function crearRepositoriosMysql(dbConfig) {
       'INSERT INTO detalles_pedido (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal) VALUES ?',
       [filas],
     );
+  }
+
+  /** Si el pedido existe pero no se actualizó, es porque otra solicitud lo cambió antes. */
+  async function lanzarSiCambio(ejecutor, id) {
+    const [filas] = await ejecutor.execute('SELECT id FROM pedidos WHERE id = ?', [Number(id)]);
+    if (filas.length) throw new ConcurrencyError();
   }
 
   async function detallesDe(ids) {
@@ -139,19 +147,33 @@ export async function crearRepositoriosMysql(dbConfig) {
       const detalles = await detallesDe(filas.map((fila) => fila.id));
       return filas.map((fila) => aPedido(fila, detalles.get(fila.id)));
     },
-    async actualizarDetalles(id, { detalles, total, estado }) {
+    async actualizarDetalles(id, { detalles, total, estado }, versionEsperada) {
       const actualizado = await enTransaccion(async (conexion) => {
-        const [resultado] = await conexion.execute('UPDATE pedidos SET total = ?, estado = ? WHERE id = ?', [total, estado, Number(id)]);
-        if (!resultado.affectedRows) return false;
+        // El UPDATE solo afecta la fila si nadie la cambió desde que se leyó (misma versión).
+        const [resultado] = await conexion.execute(
+          'UPDATE pedidos SET total = ?, estado = ?, version = version + 1 WHERE id = ? AND version = ?',
+          [total, estado, Number(id), versionEsperada],
+        );
+        if (!resultado.affectedRows) {
+          await lanzarSiCambio(conexion, id);
+          return false;
+        }
         await conexion.execute('DELETE FROM detalles_pedido WHERE pedido_id = ?', [Number(id)]);
         await insertarDetalles(conexion, Number(id), detalles);
         return true;
       });
       return actualizado ? pedidos.buscarPorId(id) : null;
     },
-    async actualizarEstado(id, estado) {
-      const [resultado] = await pool.execute('UPDATE pedidos SET estado = ? WHERE id = ?', [estado, Number(id)]);
-      return resultado.affectedRows ? pedidos.buscarPorId(id) : null;
+    async actualizarEstado(id, estado, versionEsperada) {
+      const [resultado] = await pool.execute(
+        'UPDATE pedidos SET estado = ?, version = version + 1 WHERE id = ? AND version = ?',
+        [estado, Number(id), versionEsperada],
+      );
+      if (!resultado.affectedRows) {
+        await lanzarSiCambio(pool, id);
+        return null;
+      }
+      return pedidos.buscarPorId(id);
     },
   };
 

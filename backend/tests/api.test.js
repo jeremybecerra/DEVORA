@@ -184,6 +184,21 @@ describe('Pedidos', () => {
     assert.deepEqual(body.detalles.map((d) => [d.productoId, d.cantidad]), [[4, 3], [5, 1]]);
   });
 
+  it('dos agregados simultáneos al mismo pedido no pierden ningún producto', async () => {
+    const comensalId = await registrarComensal(api);
+    const { body: pedido } = await api('POST', '/api/pedidos', { mesaId: '01', comensalId, items: [{ productoId: 1, cantidad: 1 }] });
+    const [primero, segundo] = await Promise.all([
+      api('POST', `/api/pedidos/${pedido.id}/items`, { items: [{ productoId: 4, cantidad: 1 }] }),
+      api('POST', `/api/pedidos/${pedido.id}/items`, { items: [{ productoId: 5, cantidad: 1 }] }),
+    ]);
+    assert.equal(primero.status, 200);
+    assert.equal(segundo.status, 200);
+    const { body: final } = await api('GET', `/api/pedidos/${pedido.id}`);
+    assert.deepEqual(final.detalles.map((d) => d.productoId).sort(), [1, 4, 5]);
+    assert.equal(final.total, 55);
+    assert.equal(final.version, 3);
+  });
+
   it('el panel lista los pedidos de una mesa con el nombre del comensal', async () => {
     const pame = await registrarComensal(api, '05', 'Pame');
     const luis = await registrarComensal(api, '05', 'Luis');

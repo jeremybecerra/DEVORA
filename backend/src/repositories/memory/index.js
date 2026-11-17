@@ -1,3 +1,4 @@
+import { ConcurrencyError } from '../../domain/errors.js';
 import { DATOS_INICIALES } from './datos-iniciales.js';
 
 /**
@@ -25,7 +26,7 @@ export function crearRepositoriosMemoria(datos = DATOS_INICIALES) {
   const repositorioPedidos = {
     async crear({ mesaId, comensalId, estado, detalles, total, claveIdempotencia = null }) {
       const fecha = ahora();
-      const pedido = { id: siguientePedido++, mesaId, comensalId, estado, fecha, actualizadoEn: fecha, detalles: structuredClone(detalles), total };
+      const pedido = { id: siguientePedido++, mesaId, comensalId, estado, fecha, actualizadoEn: fecha, version: 1, detalles: structuredClone(detalles), total };
       pedidos.set(pedido.id, pedido);
       if (claveIdempotencia) clavesIdempotencia.set(claveIdempotencia, pedido.id);
       return copia(conNombreComensal(pedido));
@@ -44,16 +45,18 @@ export function crearRepositoriosMemoria(datos = DATOS_INICIALES) {
         .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id)
         .map((pedido) => copia(conNombreComensal(pedido)));
     },
-    async actualizarDetalles(id, { detalles, total, estado }) {
+    async actualizarDetalles(id, { detalles, total, estado }, versionEsperada) {
       const pedido = pedidos.get(Number(id));
       if (!pedido) return null;
-      Object.assign(pedido, { detalles: structuredClone(detalles), total, estado, actualizadoEn: ahora() });
+      if (pedido.version !== versionEsperada) throw new ConcurrencyError();
+      Object.assign(pedido, { detalles: structuredClone(detalles), total, estado, actualizadoEn: ahora(), version: pedido.version + 1 });
       return copia(conNombreComensal(pedido));
     },
-    async actualizarEstado(id, estado) {
+    async actualizarEstado(id, estado, versionEsperada) {
       const pedido = pedidos.get(Number(id));
       if (!pedido) return null;
-      Object.assign(pedido, { estado, actualizadoEn: ahora() });
+      if (pedido.version !== versionEsperada) throw new ConcurrencyError();
+      Object.assign(pedido, { estado, actualizadoEn: ahora(), version: pedido.version + 1 });
       return copia(conNombreComensal(pedido));
     },
   };

@@ -1,420 +1,516 @@
-﻿
-# DEVORA
+﻿# DEVORA
 
 **Comparte la mesa, no la confusión.**
 
-Sistema de gestión de pedidos individuales para mesas
-grupales de restaurantes.
+Sistema de gestión de pedidos individuales para mesas grupales de restaurantes.
 
-Proyecto de Ingeniería de Software
-
-Universidad Privada Boliviana (UPB).
+Proyecto de Ingeniería de Software — Universidad Privada Boliviana (UPB).
 
 ## 1. Descripción
 
-DEVORA permite que los comensales de una mesa consulten
-el menú, registren pedidos y visualicen su consumo
-individual.
+DEVORA permite que los comensales de una mesa consulten el menú, registren pedidos y visualicen su consumo individual. El restaurante puede consultar los pedidos registrados, identificar a los comensales y filtrar los pedidos por mesa.
 
-El restaurante puede consultar los pedidos registrados,
-identificar a los comensales y filtrar los pedidos por mesa.
+Este repositorio contiene el primer incremento funcional del proyecto. Su alcance comprende el flujo de pedidos individuales y su persistencia; los pagos reales y el cierre de mesas quedan pendientes.
 
 ## 2. Funcionalidades del primer incremento
 
-- Identificación de mesas y comensales.
-- Consulta del menú de productos.
-- Selección de productos y cantidades.
-- Registro de pedidos individuales.
-- Cálculo del total desde el backend.
-- Consulta de pedidos en el panel del restaurante.
-- Filtrado de pedidos por mesa.
-- Validación de pedidos y prevención de duplicados.
-- Almacenamiento persistente mediante MySQL.
+- Identificación de mesas mediante un enlace y registro de comensales.
+- Consulta del menú de productos y selección de cantidades.
+- Registro de pedidos individuales y adición de productos a pedidos existentes.
+- Cálculo del total desde el backend y visualización del consumo individual.
+- Consulta de pedidos y filtrado por mesa en el panel del restaurante.
+- Validación de solicitudes y soporte de idempotencia en la API para prevenir duplicados cuando se reutiliza una clave de idempotencia.
+- Almacenamiento de pedidos y sus detalles mediante MySQL.
+- Modo de demostración del comensal con datos y pagos simulados, separado del modo conectado a la API.
 
 ## 3. Tecnologías utilizadas
 
-- HTML5.
-- CSS3.
-- JavaScript.
-- ECMAScript Modules (ES Modules).
-- Node.js.
-- Express.
+- HTML5, CSS3 y JavaScript (ECMAScript Modules).
+- Node.js y Express.
 - MySQL.
-- API REST.
+- API REST con intercambio de información en JSON.
 - Git y GitHub.
 - Node.js Test Runner.
 
 ## 4. Arquitectura
 
-El sistema utiliza una arquitectura cliente-servidor
-con un backend organizado en capas y componentes
-de presentación modularizados.
+DEVORA utiliza una arquitectura cliente-servidor. Las dos interfaces web se comunican con el backend mediante HTTP y JSON; ninguna accede directamente a MySQL.
 
-- Presentación: interfaz del comensal y panel del restaurante.
-- Controladores y rutas: recepción de solicitudes HTTP.
-- Servicios: reglas de negocio y procesamiento de pedidos.
-- Dominio: validaciones, errores y cálculo de montos.
-- Repositorios: acceso a datos en memoria o MySQL.
+```mermaid
+flowchart LR
+    C[Frontend del comensal] -->|HTTP / JSON| API[API REST - Node.js y Express]
+    P[Panel del restaurante] -->|HTTP / JSON| API
+    API --> S[Servicios y dominio]
+    S --> R[Repositorios]
+    R --> M[(MySQL)]
+    R --> D[Datos en memoria]
+```
 
-Las interfaces se comunican con el backend mediante
-una API REST que intercambia información en formato JSON.
+El backend selecciona una fuente de datos mediante `DATA_SOURCE`: `memory` o `mysql`. El repositorio simulado del frontend es independiente de estas dos opciones y se utiliza únicamente con el parámetro `demo=1`.
 
-### Arquitectura modular del panel del restaurante
+### Backend
 
-El panel utiliza módulos ECMAScript mediante import y export,
-aplicando el principio de separación de responsabilidades.
+| Componente | Responsabilidad |
+|---|---|
+| Rutas | Definir los endpoints HTTP por recurso. |
+| Controladores | Recibir solicitudes y devolver respuestas. |
+| Servicios | Aplicar reglas de negocio y coordinar operaciones. |
+| Dominio | Validar datos, representar errores y calcular montos. |
+| Repositorios | Acceder a datos en memoria o MySQL mediante un contrato común. |
+
+### Frontend modular del comensal
+
+El frontend fue refactorizado con una organización basada en MVC (Modelo-Vista-Controlador), separando responsabilidades entre controladores, modelos, vistas e infraestructura.
+
+| Componente | Responsabilidad |
+|---|---|
+| `codigo/configuracion/` | Configuración de rutas, dirección de la API y modo de ejecución. |
+| `codigo/dominio/` | Contratos, modelos, validaciones y estrategias de pago. |
+| `codigo/infraestructura/` | Cliente HTTP, repositorios, fábricas, almacenamiento de sesión y datos simulados. |
+| `codigo/presentacion/` | Controladores de sesión, menú, eventos, pedidos y pagos. |
+| `interfaz/` | Vistas, estilos y recursos gráficos. |
+| `codigo/inicio.js` | Punto de entrada de la aplicación. |
+| `js/` | Adaptadores de compatibilidad con módulos anteriores. |
+
+Patrones de diseño incorporados:
+
+- **Factory:** selección del repositorio HTTP o simulado y creación de estrategias de pago.
+- **Repository:** contrato común para el acceso a los datos, independiente de su origen.
+- **Strategy:** separación de las variantes de pago por efectivo y QR.
+
+Los controladores especializados comparten el estado de la aplicación mediante una fachada principal. La capa de aplicación independiente queda pendiente de implementación explícita. Los pagos simulados no representan transacciones financieras reales.
+
+### Panel modular del restaurante
+
+El panel utiliza módulos ECMAScript (`import` y `export`) para separar sus responsabilidades.
 
 | Módulo | Responsabilidad |
 |---|---|
-| config.js | Configuración de la dirección base de la API. |
-| api.js | Solicitudes HTTP y validación de respuestas. |
-| view.js | Manipulación del DOM y presentación de información. |
-| app.js | Coordinación de módulos, eventos e inicialización. |
+| `config.js` | Configuración de la dirección base de la API (`/api`). |
+| `api.js` | Solicitudes HTTP y validación de respuestas. |
+| `view.js` | Manipulación del DOM y presentación de información. |
+| `app.js` | Coordinación de módulos, eventos e inicialización. |
 
-Esta organización facilita el mantenimiento, la reutilización
-y las pruebas automatizadas.
-
-También se aplica inyección de dependencias para sustituir
-la comunicación HTTP y el documento HTML durante las pruebas,
-sin depender de un servidor o una base de datos real.
+Se aplica inyección de dependencias para sustituir la comunicación HTTP y el documento HTML durante las pruebas, sin depender de un servidor o una base de datos real.
 
 ## 5. Estructura del repositorio
 
-    DEVORA/
-    ├── backend/
-    │   ├── docs/
-    │   ├── src/
-    │   ├── tests/
-    │   ├── .env.example
-    │   └── package.json
-    ├── frontend-comensal/
-    │   └── comensal/
-    ├── panel-restaurante/
-    │   ├── js/
-    │   │   ├── api.js
-    │   │   ├── app.js
-    │   │   ├── config.js
-    │   │   └── view.js
-    │   ├── test/
-    │   │   └── panel.test.mjs
-    │   ├── index.html
-    │   ├── styles.css
-    │   └── package.json
-    └── README.md
+Se muestran los archivos y directorios principales (estructura abreviada).
+
+```text
+DEVORA/
+├── backend/
+│   ├── docs/
+│   ├── src/
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── domain/
+│   │   ├── middlewares/
+│   │   ├── repositories/
+│   │   ├── routes/
+│   │   └── services/
+│   ├── tests/
+│   ├── .env.example
+│   ├── API.md
+│   ├── package-lock.json
+│   └── package.json
+├── frontend-comensal/
+│   ├── comensal/
+│   │   ├── codigo/
+│   │   │   ├── configuracion/
+│   │   │   ├── dominio/
+│   │   │   ├── infraestructura/
+│   │   │   ├── presentacion/
+│   │   │   └── inicio.js
+│   │   ├── interfaz/
+│   │   │   ├── estilos/
+│   │   │   ├── recursos/
+│   │   │   └── vistas/
+│   │   ├── js/
+│   │   └── index.html
+│   ├── test/
+│   ├── ARQUITECTURA.md
+│   └── package.json
+├── panel-restaurante/
+│   ├── js/
+│   │   ├── api.js
+│   │   ├── app.js
+│   │   ├── config.js
+│   │   └── view.js
+│   ├── test/
+│   │   └── panel.test.mjs
+│   ├── index.html
+│   ├── styles.css
+│   └── package.json
+└── README.md
+```
 
 ## 6. Requisitos de instalación
 
 - Git.
-- Node.js 22 recomendado (versión probada).
-- npm.
-- Navegador web.
-- MySQL 8 para almacenamiento persistente
-  (probado con MySQL 8.4.13).
+- Node.js 22 (versión utilizada en el entorno de pruebas) y npm.
+- Navegador web moderno.
+- MySQL Server 8 para almacenamiento persistente (probado con MySQL 8.4.13).
 
-MySQL no es obligatorio para ejecutar el modo en memoria.
+MySQL no es obligatorio para ejecutar el backend en modo memoria. Los dos frontends utilizan JavaScript nativo y no requieren instalar dependencias adicionales para servir sus interfaces.
 
 ## 7. Instalación y ejecución
 
-Los siguientes comandos están preparados para
-PowerShell en Windows.
+Los siguientes comandos están preparados para PowerShell en Windows.
 
-Clonar el repositorio:
+Clonar el repositorio y registrar la revisión descargada:
 
-    git clone https://github.com/jeremybecerra/DEVORA.git
-    cd DEVORA
+```powershell
+git clone https://github.com/jeremybecerra/DEVORA.git
+cd DEVORA
+git rev-parse HEAD
+```
 
-Instalar las dependencias:
+Para reproducir específicamente la revisión evaluada en la sección 11, ejecutar `git switch --detach 0a20c1c` una vez disponible dicho commit en el repositorio descargado. Para trabajar sobre la versión de entrega, conservar la rama correspondiente.
 
-    cd backend
-    npm.cmd ci
+Instalar las dependencias del backend a partir del archivo de bloqueo:
 
-Crear el archivo de configuración local:
+```powershell
+cd backend
+npm.cmd ci
+```
 
+Crear la configuración local, sin sobrescribir un archivo existente:
+
+```powershell
+if (-not (Test-Path .env)) {
     Copy-Item .env.example .env
+}
+```
 
-Si el archivo .env ya existe, conservarlo y revisar
-su configuración en lugar de sobrescribirlo.
+Revisar que `DATA_SOURCE=memory` para iniciar sin MySQL. Comprobar también que las rutas de las interfaces correspondan a las indicadas en la sección 8.
 
 Iniciar el servidor:
 
-    npm.cmd start
+```powershell
+npm.cmd start
+```
 
-La configuración inicial utiliza datos en memoria.
-Los pedidos de este modo se pierden al reiniciar
-el backend.
+Los pedidos del modo memoria se pierden al reiniciar el backend. Para conservarlos, configurar MySQL según la siguiente sección. Mantener el servidor en ejecución mientras se utilizan las interfaces.
 
 ## 8. Configuración de MySQL
 
-Para utilizar almacenamiento persistente:
+### Instalación inicial
 
-1. Instalar MySQL Server 8.
-2. Iniciar el servicio de MySQL.
-3. Conectarse como administrador.
-4. Ejecutar el esquema SQL del proyecto.
+1. Instalar MySQL Server 8 e iniciar su servicio.
+2. Conectarse como administrador desde la carpeta `backend/`.
+3. Ejecutar el esquema SQL en una instalación local nueva.
 
-Desde la carpeta backend, ingresar a MySQL:
+```powershell
+mysql --default-character-set=utf8mb4 -u root -p
+```
 
-    mysql --default-character-set=utf8mb4 -u root -p
+Si `mysql` no está disponible en el PATH de Windows, utilizar la ruta completa de `mysql.exe`. Dentro del cliente MySQL, ejecutar:
 
-Si mysql no está disponible en el PATH de Windows,
-utilizar la ruta completa de mysql.exe.
+```sql
+SOURCE docs/esquema-mysql.sql;
+```
 
-Dentro de MySQL, ejecutar:
+El script crea la base de datos `devora`, cinco tablas, ocho mesas y nueve productos iniciales. No volver a ejecutar el esquema sobre datos existentes sin revisar sus efectos y contar con un respaldo adecuado.
 
-    SOURCE docs/esquema-mysql.sql;
+Crear un usuario exclusivo para el backend, si todavía no existe:
 
-El script crea la base de datos devora, cinco tablas,
-ocho mesas y nueve productos iniciales.
+```sql
+CREATE USER 'devora_app'@'127.0.0.1'
+IDENTIFIED BY RANDOM PASSWORD;
 
-Para una instalación nueva, crear un usuario exclusivo
-para el backend:
+GRANT SELECT, INSERT, UPDATE, DELETE
+ON devora.*
+TO 'devora_app'@'127.0.0.1';
+```
 
-    CREATE USER 'devora_app'@'127.0.0.1'
-    IDENTIFIED BY RANDOM PASSWORD;
+Guardar de forma privada la contraseña generada. Si el usuario ya existe, revisar sus permisos y utilizar su contraseña local en lugar de crearlo nuevamente.
 
-    GRANT SELECT, INSERT, UPDATE, DELETE
-    ON devora.*
-    TO 'devora_app'@'127.0.0.1';
+### Configuración del backend
 
-Guardar de forma privada la contraseña generada.
-Si el usuario ya existe, no es necesario crearlo nuevamente.
+Editar el archivo `backend/.env`:
 
-Configurar backend/.env con los siguientes valores:
+```dotenv
+DATA_SOURCE=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=devora_app
+DB_PASSWORD=
+DB_NAME=devora
+FRONTEND_DIR=../frontend-comensal/comensal
+PANEL_DIR=../panel-restaurante
+```
 
-    DATA_SOURCE=mysql
-    DB_HOST=127.0.0.1
-    DB_PORT=3306
-    DB_USER=devora_app
-    DB_PASSWORD=
-    DB_NAME=devora
+Completar `DB_PASSWORD` con la contraseña local. Conservar las demás variables requeridas por `.env.example`. No publicar el archivo `.env` ni incluir credenciales en capturas o reportes.
 
-Completar DB_PASSWORD con la contraseña local.
+Reiniciar el backend (`Ctrl + C` y `npm.cmd start`, desde `backend/`). En otra terminal, comprobar la conexión:
 
-Verificar las rutas de las interfaces:
+```powershell
+Invoke-RestMethod http://localhost:3000/api/salud
+```
 
-    FRONTEND_DIR=../frontend-comensal/comensal
-    PANEL_DIR=../panel-restaurante
-
-Reiniciar el backend para aplicar la configuración.
-
-Consultar /api/salud y comprobar que fuenteDatos
-sea mysql y baseDatos sea ok.
+La respuesta debe indicar `estado: ok`, `baseDatos: ok` y `fuenteDatos: mysql`.
 
 ## 9. Acceso al sistema
 
-| Componente | Dirección |
+| Componente | Dirección local |
 |---|---|
-| Comensal | http://localhost:3000/?mesa=05 |
-| Restaurante | http://localhost:3000/panel/ |
-| API REST | http://localhost:3000/api |
-| Estado del sistema | http://localhost:3000/api/salud |
+| Comensal (conectado a la API) | <http://localhost:3000/?mesa=05> |
+| Restaurante | <http://localhost:3000/panel/> |
+| API REST | <http://localhost:3000/api> |
+| Estado del sistema | <http://localhost:3000/api/salud> |
+| Comensal en modo demostración | <http://localhost:3000/?mesa=05&demo=1> |
 
-Las interfaces deben abrirse mediante el servidor HTTP,
-no directamente como archivos HTML locales.
+Abrir las interfaces a través del servidor HTTP, no directamente como archivos HTML locales. Para verificar la integración y persistencia, utilizar el modo conectado a la API, sin `demo=1`. Una ventana privada del navegador permite comenzar sin recuperar sesiones anteriores.
 
 ## 10. Pruebas automatizadas
 
-Desde la carpeta backend:
+Ejecutar los comandos desde la raíz del repositorio. Mantener detenido el servidor durante las pruebas automatizadas y utilizar solamente una base local de desarrollo o de pruebas.
 
-    npm.cmd test
+### Backend
 
-Pruebas de contrato con MySQL:
+```powershell
+cd backend
+npm.cmd test
+cd ..
+```
 
-    npm.cmd run test:mysql
+Pruebas de contrato de los repositorios con MySQL configurado:
 
-Para ejecutar las pruebas de MySQL es necesario configurar
-DATA_SOURCE=mysql y disponer de una base local de pruebas.
+```powershell
+cd backend
+npm.cmd run test:mysql
+cd ..
+```
 
-Las pruebas de contrato crean registros adicionales.
-No deben ejecutarse sobre una base de producción.
+Para ejecutar las pruebas de MySQL se necesita una conexión operativa y la configuración local correspondiente. Las pruebas de contrato pueden crear registros adicionales; nunca deben ejecutarse sobre una base de producción. La ejecución final de la suite del backend incluye las pruebas de contrato y no debe sumarse nuevamente su cantidad al total.
 
-Desde frontend-comensal:
+### Frontend del comensal
 
-    npm.cmd test
+```powershell
+cd frontend-comensal
+npm.cmd test
+cd ..
+```
 
-Desde panel-restaurante:
+Se evalúan la comunicación HTTP, el carrito, las validaciones de la selección, la estructura de los patrones, las vistas y los flujos simulados de pago.
 
-    npm.cmd test
+### Panel del restaurante
 
-Las pruebas del panel verifican:
+```powershell
+cd panel-restaurante
+npm.cmd test
+cd ..
+```
 
-- Carga de mesas desde la API.
-- Visualización de productos y totales.
-- Filtrado de pedidos por mesa.
-- Manejo de listas vacías.
-- Manejo de errores de comunicación con la API.
+Las cinco pruebas del panel comprueban la carga de mesas, la visualización de productos y totales, el filtrado por mesa, el manejo de listas vacías y los errores de la API. Utilizan dependencias simuladas.
 
 ## 11. Cobertura de código
 
-Desde backend:
+Desde la raíz del repositorio, ejecutar:
 
-    node --experimental-test-coverage --test-coverage-include="src/**/*.js" --test --test-reporter=spec "tests/**/*.test.js"
+### Backend
 
-Desde frontend-comensal:
+```powershell
+cd backend
+node --experimental-test-coverage --test-coverage-include="src/**/*.js" --test --test-reporter=spec "tests/**/*.test.js"
+cd ..
+```
 
-    node --experimental-test-coverage --test-coverage-include="comensal/js/**/*.js" --test
+### Frontend del comensal
 
-Desde panel-restaurante:
+```powershell
+cd frontend-comensal
+node --experimental-test-coverage --test-coverage-include="comensal/**/*.js" --test
+cd ..
+```
 
-    npm.cmd run test:coverage
+### Panel del restaurante
 
-Últimos resultados disponibles por módulo,
-obtenidos el 17 de noviembre de 2026:
+```powershell
+cd panel-restaurante
+npm.cmd run test:coverage
+cd ..
+```
 
-| Módulo | Pruebas aprobadas | Líneas | Ramas | Funciones |
+### Resultados de la integración modular
+
+Fecha de ejecución: 17 de noviembre de 2026.
+
+Revisión evaluada: [`0a20c1c`](https://github.com/jeremybecerra/DEVORA/commit/0a20c1c), rama `integracion-final-parcial1`.
+
+| Componente | Pruebas aprobadas | Líneas | Ramas | Funciones |
 |---|---:|---:|---:|---:|
-| Backend | 58 | 94.97% | 85.46% | 90.16% |
-| Comensal | 18 | 73.63% | 62.75% | 59.80% |
-| Restaurante | 5 | 96.09% | 90.91% | 90% |
-| Total | 81 | - | - | - |
+| Backend | 58 | 94,97 % | 85,46 % | 90,16 % |
+| Comensal | 24 | 61,57 % | 68,72 % | 38,86 % |
+| Restaurante | 5 | 96,09 % | 90,91 % | 90,00 % |
+| **Total de pruebas** | **87** | — | — | — |
 
-Pruebas fallidas: 0.
-Pruebas omitidas: 0.
+- Pruebas ejecutadas y aprobadas: 87.
+- Pruebas fallidas, canceladas u omitidas: 0.
+- Código de salida de los tres procesos: 0.
+- Las pruebas de contrato de memoria y MySQL se ejecutaron dentro de la suite del backend.
 
-Los resultados del backend y del comensal corresponden
-a la integración anterior. Los resultados del restaurante
-corresponden a su refactorización modular.
+La cobertura de líneas supera el 60 % en los archivos contabilizados por cada reporte. Esto no equivale a una medición de la cobertura global del repositorio: existen archivos que no aparecen en los reportes. Tampoco se sumaron ni promediaron porcentajes de componentes con tamaños diferentes.
 
-Se requiere una nueva ejecución conjunta después
-de integrar las refactorizaciones del equipo.
-
-Los porcentajes corresponden a los archivos contabilizados
-por los reportes de cobertura de cada módulo.
-No representan una cobertura global de todo el repositorio.
+En el comensal, la incorporación de módulos y el cambio del alcance de medición impiden comparar directamente la cobertura con la versión anterior. Se identificaron controladores y funciones que requieren pruebas adicionales; la cobertura de funciones del componente fue del 38,86 %.
 
 ### Cobertura del panel modularizado
 
 | Archivo | Líneas | Ramas | Funciones |
 |---|---:|---:|---:|
-| api.js | 95.24% | 90% | 80% |
-| app.js | 93.18% | 85.71% | 100% |
-| config.js | 100% | 100% | 100% |
-| view.js | 97.83% | 93.33% | 91.67% |
-| Total | 96.09% | 90.91% | 90% |
+| `api.js` | 95,24 % | 90,00 % | 80,00 % |
+| `app.js` | 93,18 % | 85,71 % | 100,00 % |
+| `config.js` | 100,00 % | 100,00 % | 100,00 % |
+| `view.js` | 97,83 % | 93,33 % | 91,67 % |
+| **Total** | **96,09 %** | **90,91 %** | **90,00 %** |
 
-### Resultados de la refactorización
-
-| Indicador | Antes | Después |
-|---|---:|---:|
-| Cobertura de líneas | 92.86% | 96.09% |
-| Cobertura de ramas | 76.19% | 90.91% |
-| Cobertura de funciones | 100% | 90% |
-| Pruebas aprobadas | 5 | 5 |
-| Pruebas fallidas | 0 | 0 |
-
-La refactorización conserva los cinco casos de prueba
-originales y mejora la separación de responsabilidades.
-
-La cobertura de funciones disminuyó debido a la incorporación
-de funciones que todavía no se ejercitan en las pruebas.
+La refactorización del panel conservó los cinco casos anteriores. Se incrementó la cobertura de líneas del 92,86 % al 96,09 % y de ramas del 76,19 % al 90,91 %. La cobertura de funciones pasó del 100 % al 90 %; el nuevo alcance incluye funciones no ejercitadas. Estas cifras describen reportes de dos estructuras de código diferentes.
 
 ## 12. Verificación de integración
 
-Se realizó una prueba manual de extremo a extremo
-utilizando MySQL como fuente de datos.
+El 17 de noviembre de 2026 se verificó el sistema después de integrar el frontend modular del comensal, el panel modular del restaurante y el backend. Se utilizó MySQL como fuente de datos.
 
-Pedido de prueba:
+### Resultado de la prueba funcional final (CA-01)
 
-- Mesa: 05.
-- Silpancho: 2 unidades.
-- Limonada: 1 unidad.
-- Total: Bs 82.
+| Dato | Resultado observado |
+|---|---|
+| Mesa | 05 |
+| Comensal de prueba | Prueba Integracion Final |
+| Identificador del pedido | 4 |
+| Limonada | 1 × Bs 12 |
+| Silpancho | 1 × Bs 35 |
+| Total | Bs 47 |
+| Estado | Recibido |
 
-Resultados:
+El pedido fue registrado desde el frontend del comensal y visualizado en el panel del restaurante. La API confirmó el total de Bs 47 y una conexión operativa con MySQL. Tras detener y reiniciar el backend, se recuperó el pedido 4 con los mismos datos, detalles, total y versión.
 
-- Registro correcto desde la interfaz del comensal.
-- Visualización correcta en el panel del restaurante.
-- Almacenamiento del pedido y sus detalles en MySQL.
-- Persistencia del pedido después de reiniciar el backend.
-- Consistencia entre el total y la suma de subtotales.
+### Criterios de aceptación verificados
 
-La persistencia también puede comprobarse ejecutando
-el siguiente script dentro de MySQL, desde backend:
+| ID | Escenario | Resultado esperado | Resultado observado |
+|---|---|---|---|
+| CA-01 | Pedido válido | Registrar el pedido y mostrar el total correcto. | Pedido 4, Bs 47, visible en ambas interfaces. Aprobado. |
+| CA-02 | Pedido sin productos | Rechazar la solicitud sin registrar un pedido vacío. | HTTP 400, `DATOS_INVALIDOS`; 4 pedidos antes y 4 después. Aprobado. |
 
-    SOURCE docs/verificacion_persistencia_adriana.sql;
+### Procedimiento de demostración reproducible
 
-### Criterios de aceptación
+Con el backend ejecutándose en modo MySQL y la conexión operativa:
 
-| ID | Escenario | Resultado esperado |
-|---|---|---|
-| CA-01 | Pedido válido | Registro correcto y cálculo del total. |
-| CA-02 | Pedido sin productos | Rechazo de la solicitud sin almacenar un pedido vacío. |
+1. Abrir `http://localhost:3000/?mesa=05` en una ventana privada, sin `demo=1`.
+2. Registrar un nombre de prueba, agregar una Limonada y un Silpancho y confirmar el pedido.
+3. Verificar el total mostrado (Bs 47 si se mantienen los precios iniciales).
+4. Abrir `http://localhost:3000/panel/`, filtrar por mesa 05 y actualizar los pedidos. Comprobar el registro del mismo comensal y total.
+5. Identificar el ID del nuevo pedido a través de la API y consultar `GET /api/pedidos/:id`.
+6. Reiniciar el backend y repetir la consulta para verificar la persistencia.
 
-Ambos criterios fueron verificados mediante pruebas
-del sistema integrado.
+Las cantidades de registros e identificadores pueden variar entre instalaciones. Para comprobar CA-02 directamente en la API, sustituir el ID de ejemplo del siguiente bloque por el de un pedido existente en la base local de pruebas:
+
+```powershell
+$pedidoId = 4
+$api = "http://localhost:3000/api"
+$pedido = Invoke-RestMethod "$api/pedidos/$pedidoId"
+$antes = Invoke-RestMethod "$api/pedidos"
+
+$cuerpo = @{
+    mesaId = $pedido.mesaId
+    comensalId = $pedido.comensalId
+    items = @()
+} | ConvertTo-Json -Depth 5
+
+try {
+    Invoke-RestMethod -Uri "$api/pedidos" -Method Post `
+        -ContentType "application/json" -Body $cuerpo
+    Write-Host "FALLO: se acepto una solicitud invalida."
+} catch {
+    if ($_.Exception.Response) {
+        Write-Host "Estado HTTP:" ([int]$_.Exception.Response.StatusCode)
+    }
+    Write-Host $_.ErrorDetails.Message
+}
+
+$despues = Invoke-RestMethod "$api/pedidos"
+Write-Host "Pedidos antes:" @($antes).Count
+Write-Host "Pedidos despues:" @($despues).Count
+```
+
+El resultado esperado es HTTP 400 con `DATOS_INVALIDOS` y la misma cantidad de pedidos antes y después. Ejecutar esta comprobación sin otras operaciones concurrentes que creen pedidos.
+
+### Verificación de persistencia mediante SQL
+
+Desde la carpeta `backend/`, abrir MySQL con un usuario local autorizado y ejecutar:
+
+```sql
+SOURCE docs/verificacion_persistencia_adriana.sql;
+```
+
+El script contiene consultas de solo lectura para contar registros, consultar pedidos y comensales, comprobar detalles y detectar diferencias entre el total registrado y la suma de subtotales. La consulta de inconsistencias debe devolver cero filas para los datos de prueba consistentes.
+
+En una verificación anterior con MySQL se registró un pedido de Bs 82 (dos Silpanchos y una Limonada), se comprobó su persistencia tras reiniciar el backend y no se detectaron diferencias de totales en los registros consultados.
 
 ### Reproducibilidad
 
-Se verificó la ejecución desde una copia limpia
-del repositorio descargada de GitHub.
+En la revisión anterior [`89a429c`](https://github.com/jeremybecerra/DEVORA/commit/89a429c) se comprobó la instalación desde una copia limpia de GitHub en la misma computadora de desarrollo, utilizando `npm ci`, `.env.example` y el modo memoria. Se registró un pedido de Bs 47 y se visualizó en ambas interfaces.
 
-La instalación utilizó npm ci y el archivo .env.example,
-con datos en memoria.
-
-Se registró un pedido de prueba compuesto por un Silpancho
-y una Limonada, con un total de Bs 47, visualizado
-correctamente en ambas interfaces.
-
-### Verificación posterior a la refactorización
-
-El panel modularizado recuperó correctamente los pedidos
-almacenados anteriormente en MySQL, incluyendo el pedido
-de Bs 82.
+La integración modular posterior se verificó en el entorno local con MySQL y las 87 pruebas descritas en la sección 11. La comprobación desde una copia limpia de la nueva revisión queda pendiente de confirmación; no debe confundirse con la instalación limpia anterior.
 
 ## 13. Seguridad y calidad
 
-- Validación de datos desde el backend.
+- Validación de solicitudes, cantidades e identificadores desde el backend.
 - Cálculo de precios y totales desde el servidor.
-- Prevención de pedidos duplicados mediante idempotencia.
-- Control optimista de concurrencia.
-- Manejo centralizado de errores.
+- Idempotencia en la API cuando se proporciona una clave reutilizada para la misma operación y comensal.
+- Control optimista de concurrencia para evitar pérdidas de cambios en pedidos.
+- Manejo centralizado de errores y verificación del estado de MySQL.
 - Usuario MySQL con permisos limitados.
-- Exclusión de credenciales mediante .gitignore.
-- Visualización segura de datos mediante textContent.
-- Separación de responsabilidades mediante módulos.
-- Inyección de dependencias para facilitar las pruebas.
-- Pruebas automatizadas y medición de cobertura.
+- Exclusión de credenciales mediante `.gitignore` y configuración de ejemplo en `.env.example`.
+- Uso de `textContent` para representar datos en la tabla del restaurante sin interpretarlos como HTML.
+- Separación de responsabilidades, inyección de dependencias y pruebas automatizadas.
 
-El archivo .env contiene información privada
-y nunca debe publicarse en GitHub.
+Estas medidas corresponden al alcance local del incremento y no acreditan por sí mismas la seguridad de un despliegue en producción. El archivo `.env` contiene información privada y nunca debe publicarse en GitHub.
 
 ## 14. Limitaciones del primer incremento
 
-- El registro de pagos individuales no está implementado.
-- La integración con pasarelas de pago está pendiente.
-- El seguimiento de saldos y cierre de mesas está pendiente.
-- La llamada al mesero no está implementada en el backend.
-- El panel requiere actualizar la consulta para recibir
-  los nuevos pedidos mientras permanece abierto.
-- No se ha verificado un despliegue en producción.
-- HTTPS y los mecanismos completos de autenticación
-  y autorización están pendientes.
-- Existen archivos y caminos de ejecución pendientes
-  de cobertura automatizada.
-- No se ha realizado una validación formal de las métricas
-  de negocio en restaurantes piloto.
+- El acceso por enlace de mesa está implementado; no se ha verificado un flujo de escaneo físico de códigos QR.
+- El registro de pagos individuales, la integración con pasarelas de pago, el seguimiento de saldos y el cierre de mesas permanecen pendientes.
+- Los flujos de efectivo y QR del modo demostración son simulaciones y no representan transacciones financieras reales.
+- Los endpoints de pagos y llamada al mesero responden HTTP 501 para operaciones fuera del alcance implementado.
+- El panel requiere actualizar la consulta para mostrar pedidos nuevos mientras permanece abierto.
+- La capa de aplicación independiente del comensal está pendiente; varios controladores comparten el estado de la aplicación.
+- Existen archivos, funciones y caminos de ejecución pendientes de cobertura automatizada, especialmente en los controladores del comensal.
+- No se ha verificado un despliegue en producción; HTTPS y los mecanismos completos de autenticación y autorización permanecen pendientes.
+- No se ha realizado una validación formal de las métricas de negocio en restaurantes piloto.
 
 ## 15. Equipo de desarrollo
 
-| Integrante | Responsabilidad |
+| Integrante | Responsabilidad y contribución principal |
 |---|---|
-| Alejandra Sejas | Frontend del comensal. |
-| Pamela Condori | Backend y API REST. |
-| Adriana Montenegro | Base de datos y verificación de persistencia. |
-| Jeremy Becerra | Panel del restaurante, modularización, integración, pruebas y documentación técnica. |
+| Alejandra Sejas | Frontend del comensal, diseño de interfaz, modularización y pruebas. |
+| Pamela Condori | Backend, API REST, reglas de negocio, repositorios y pruebas. |
+| Adriana Montenegro | Prototipo de base de datos, verificación de persistencia y consultas SQL. |
+| Jeremy Becerra | Panel del restaurante, modularización, integración de componentes, pruebas y documentación técnica. |
+
+Hitos del historial de trabajo:
+
+| Revisión | Contribución |
+|---|---|
+| [`a9845df`](https://github.com/jeremybecerra/DEVORA/commit/a9845df) | Separación de rutas y controladores del backend. |
+| [`0f7d33e`](https://github.com/jeremybecerra/DEVORA/commit/0f7d33e) | Script de verificación de persistencia MySQL. |
+| [`9ae6bb3`](https://github.com/jeremybecerra/DEVORA/commit/9ae6bb3) | Modularización del panel del restaurante. |
+| [`d777757`](https://github.com/jeremybecerra/DEVORA/commit/d777757) | Refactorización del frontend del comensal. |
+| [`d3e8da6`](https://github.com/jeremybecerra/DEVORA/commit/d3e8da6) | Integración de las refactorizaciones. |
+| [`3e5b05e`](https://github.com/jeremybecerra/DEVORA/commit/3e5b05e) | Corrección del cliente HTTP del frontend modularizado. |
+| [`0a20c1c`](https://github.com/jeremybecerra/DEVORA/commit/0a20c1c) | Reconciliación de la rama principal conservando el código integrado. |
 
 ## 16. Documentación adicional
 
-- backend/API.md: contrato de la API REST.
-- backend/README.md: documentación técnica del backend.
-- backend/docs/esquema-mysql.sql: esquema de la base de datos.
-- backend/docs/verificacion_persistencia_adriana.sql:
-  consultas de verificación.
+- [Contrato de la API REST](backend/API.md).
+- [Documentación técnica del backend](backend/README.md).
+- [Esquema de MySQL](backend/docs/esquema-mysql.sql).
+- [Consultas de verificación de persistencia](backend/docs/verificacion_persistencia_adriana.sql).
+- [Documentación del frontend del comensal](frontend-comensal/README.md).
+- [Arquitectura del frontend del comensal](frontend-comensal/ARQUITECTURA.md).
 
 ## Estado del proyecto
 
-Primer incremento funcional, integrado y verificado
-en un entorno de desarrollo local.
+Primer incremento funcional integrado y verificado en un entorno local con MySQL. En la revisión `0a20c1c` se obtuvieron 87 pruebas automatizadas aprobadas, sin fallos ni omisiones. Se verificaron los criterios CA-01 y CA-02 y la persistencia de pedidos después de reiniciar el servidor.
 
-Actualmente se realizan mejoras de modularidad
-y mantenibilidad previas a la entrega definitiva.
+Las funcionalidades pendientes y los límites de la verificación se identifican en las secciones anteriores.

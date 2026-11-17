@@ -6,11 +6,16 @@ export class ErrorComunicacionApi extends Error {
 
 // Adapter: the rest of the UI uses these methods, independently of HTTP details.
 export class ClienteHttp {
-  constructor(baseUrl = config.baseUrl, routes = config.routes, fetcher = fetch) {
+  constructor(
+    baseUrl = config.baseUrl,
+    routes = config.routes,
+    fetcher = (...args) => globalThis.fetch(...args)
+  ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.routes = routes;
     this.fetcher = fetcher;
   }
+
 
   async request(path, options = {}) {
     let response;

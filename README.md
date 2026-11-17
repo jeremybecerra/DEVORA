@@ -93,11 +93,6 @@ Clonar el repositorio:
     git clone https://github.com/jeremybecerra/DEVORA.git
     cd DEVORA
 
-Seleccionar la rama de integración mientras los cambios
-no estén incorporados en main:
-
-    git switch integracion-panel-jeremy
-
 Instalar las dependencias:
 
     cd backend

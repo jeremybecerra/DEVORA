@@ -43,6 +43,13 @@ export class ConcurrencyError extends AppError {
   }
 }
 
+/** 503: una dependencia externa (la base de datos) no responde. El servidor sigue vivo. */
+export class ServiceUnavailableError extends AppError {
+  constructor(message = 'El servicio no está disponible en este momento. Inténtalo de nuevo en unos segundos.') {
+    super(message, { status: 503, code: 'SERVICIO_NO_DISPONIBLE' });
+  }
+}
+
 /** 501: la funcionalidad está prevista pero fuera del alcance del incremento actual. */
 export class NotImplementedError extends AppError {
   constructor(message) {

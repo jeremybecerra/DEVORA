@@ -7,7 +7,13 @@ async function main() {
   loadEnvFile();
   const config = readConfig();
   const container = await buildContainer(config);
-  const app = createApp({ config, services: container.services, fuenteDatos: container.fuenteDatos, logger });
+  const app = createApp({
+    config,
+    services: container.services,
+    fuenteDatos: container.fuenteDatos,
+    verificarSalud: container.verificarSalud,
+    logger,
+  });
 
   const server = app.listen(config.port, () => {
     logger.info(`DEVORA API escuchando en http://localhost:${config.port}/api (datos: ${container.fuenteDatos})`);

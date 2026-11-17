@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import { ConcurrencyError } from '../../domain/errors.js';
+import { protegerConexion } from './conexion.js';
 
 /**
  * Implementación MySQL del contrato de repositorios.
@@ -15,6 +16,9 @@ export async function crearRepositoriosMysql(dbConfig) {
     database: dbConfig.database,
     connectionLimit: dbConfig.connectionLimit,
     waitForConnections: true,
+    queueLimit: 100,
+    connectTimeout: 5000,
+    enableKeepAlive: true,
     decimalNumbers: true,
     timezone: 'Z',
     charset: 'utf8mb4',
@@ -177,8 +181,11 @@ export async function crearRepositoriosMysql(dbConfig) {
     },
   };
 
-  return {
+  return protegerConexion({
     fuente: 'mysql',
+    async verificarSalud() {
+      await pool.query('SELECT 1');
+    },
     mesas: {
       async listar() {
         const [filas] = await pool.execute('SELECT id, nombre, estado FROM mesas ORDER BY id');
@@ -219,5 +226,5 @@ export async function crearRepositoriosMysql(dbConfig) {
     async cerrar() {
       await pool.end();
     },
-  };
+  });
 }

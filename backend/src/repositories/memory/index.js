@@ -63,6 +63,7 @@ export function crearRepositoriosMemoria(datos = DATOS_INICIALES) {
 
   return {
     fuente: 'memory',
+    async verificarSalud() {},
     mesas: {
       async listar() {
         return [...mesas.values()].sort((a, b) => a.id.localeCompare(b.id)).map(copia);

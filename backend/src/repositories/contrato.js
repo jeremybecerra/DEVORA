@@ -48,6 +48,7 @@
  * @property {ProductoRepository} productos
  * @property {ComensalRepository} comensales
  * @property {PedidoRepository} pedidos
+ * @property {() => Promise<void>} verificarSalud  Lanza un error si la fuente de datos no responde.
  * @property {() => Promise<void>} cerrar  Libera conexiones al apagar el servidor.
  */
 
@@ -66,7 +67,9 @@ export function verificarContrato(repositorios) {
       if (typeof repositorios?.[nombre]?.[metodo] !== 'function') faltantes.push(`${nombre}.${metodo}`);
     }
   }
-  if (typeof repositorios?.cerrar !== 'function') faltantes.push('cerrar');
+  for (const metodo of ['verificarSalud', 'cerrar']) {
+    if (typeof repositorios?.[metodo] !== 'function') faltantes.push(metodo);
+  }
   if (faltantes.length) throw new Error(`El repositorio no cumple el contrato. Faltan: ${faltantes.join(', ')}`);
   return repositorios;
 }

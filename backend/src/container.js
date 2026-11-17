@@ -20,6 +20,7 @@ export async function buildContainer(config, { repositorios } = {}) {
   return {
     fuenteDatos: repos.fuente ?? config.dataSource,
     services: Object.freeze({ mesaService, productoService, comensalService, pedidoService }),
+    verificarSalud: () => repos.verificarSalud(),
     cerrar: () => repos.cerrar(),
   };
 }

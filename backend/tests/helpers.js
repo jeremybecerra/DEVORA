@@ -11,7 +11,13 @@ import { silentLogger } from '../src/utils/logger.js';
 export async function levantarApi({ repositorios = crearRepositoriosMemoria() } = {}) {
   const config = readConfig({ NODE_ENV: 'test', DATA_SOURCE: 'memory', LOG_REQUESTS: 'false' });
   const container = await buildContainer(config, { repositorios });
-  const app = createApp({ config, services: container.services, fuenteDatos: container.fuenteDatos, logger: silentLogger });
+  const app = createApp({
+    config,
+    services: container.services,
+    fuenteDatos: container.fuenteDatos,
+    verificarSalud: container.verificarSalud,
+    logger: silentLogger,
+  });
 
   const server = await new Promise((resolve) => {
     const instancia = app.listen(0, () => resolve(instancia));

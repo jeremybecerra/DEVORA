@@ -447,11 +447,39 @@ El script contiene consultas de solo lectura para contar registros, consultar pe
 
 En una verificación anterior con MySQL se registró un pedido de Bs 82 (dos Silpanchos y una Limonada), se comprobó su persistencia tras reiniciar el backend y no se detectaron diferencias de totales en los registros consultados.
 
+
 ### Reproducibilidad
 
-En la revisión anterior [`89a429c`](https://github.com/jeremybecerra/DEVORA/commit/89a429c) se comprobó la instalación desde una copia limpia de GitHub en la misma computadora de desarrollo, utilizando `npm ci`, `.env.example` y el modo memoria. Se registró un pedido de Bs 47 y se visualizó en ambas interfaces.
+El 17 de noviembre de 2026 se verificó la instalación
+desde una copia limpia del repositorio de GitHub,
+correspondiente a la revisión `7a2d6f3b140499c138ba8f8cfcb207182338c1ca`.
 
-La integración modular posterior se verificó en el entorno local con MySQL y las 87 pruebas descritas en la sección 11. La comprobación desde una copia limpia de la nueva revisión queda pendiente de confirmación; no debe confundirse con la instalación limpia anterior.
+La instalación se realizó en la misma computadora
+de desarrollo mediante `npm ci` y la configuración
+proporcionada en `.env.example`.
+
+Resultados obtenidos:
+
+- Instalación correcta de 77 paquetes.
+- Ninguna vulnerabilidad detectada por npm.
+- Servidor iniciado correctamente.
+- Fuente de datos en memoria (`memory`).
+- Registro del pedido N.º 1 en la mesa 05.
+- Comensal: Prueba Instalacion Final.
+- Productos: una Limonada y un Silpancho.
+- Total esperado y obtenido: Bs 47.
+- Visualización correcta en ambas interfaces.
+
+La prueba permitió comprobar la reproducibilidad
+del flujo principal sin utilizar credenciales privadas
+ni configurar una base de datos MySQL.
+
+La persistencia con MySQL se verificó de manera
+independiente mediante las pruebas de integración.
+
+La instalación en otros equipos y sistemas operativos
+queda pendiente de verificación.
+
 
 ## 13. Seguridad y calidad
 

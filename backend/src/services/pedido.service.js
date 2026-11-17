@@ -1,4 +1,4 @@
-import { ConflictError, NotFoundError, NotImplementedError } from '../domain/errors.js';
+import { ConcurrencyError, ConflictError, NotFoundError } from '../domain/errors.js';
 import { lineSubtotal, sumAmounts } from '../domain/money.js';
 import { ESTADOS_PEDIDO, ESTADOS_PEDIDO_EDITABLES, RULES, TRANSICIONES_PEDIDO } from '../domain/rules.js';
 import {
@@ -24,13 +24,16 @@ export class PedidoService {
    * Crea el pedido de un comensal (criterio CA-01: pedido válido se registra con su total).
    * Devuelve { pedido, creado }: creado=false cuando la misma clave de idempotencia ya registró
    * un pedido, así un doble toque no duplica nada (CA-07).
+   * La clave se guarda junto al id del comensal: si otro comensal usa la misma clave,
+   * no recibe un pedido ajeno, sino que se crea el suyo.
    */
-  async crear(body, { claveIdempotencia: clave } = {}) {
+  async crear(body, { claveIdempotencia: claveRecibida } = {}) {
     const datos = requireBody(body);
     const mesaId = parseMesaId(datos.mesaId);
     const comensalId = parsePositiveId(datos.comensalId, 'comensalId', 'el comensal');
     const items = parseItems(datos.items);
-    const claveIdempotencia = parseIdempotencyKey(clave);
+    const clave = parseIdempotencyKey(claveRecibida);
+    const claveIdempotencia = clave ? `${comensalId}:${clave}` : null;
 
     if (claveIdempotencia) {
       const existente = await this.pedidos.buscarPorClaveIdempotencia(claveIdempotencia);
@@ -69,11 +72,21 @@ export class PedidoService {
     return this.pedidos.listar(filtros);
   }
 
-  /** Agrega productos a un pedido existente; si un producto ya estaba, suma la cantidad. */
+  /**
+   * Agrega productos a un pedido existente; si un producto ya estaba, suma la cantidad.
+   * Si otra solicitud modificó el pedido al mismo tiempo, se vuelve a leer y se reintenta,
+   * así ningún producto agregado se pierde.
+   */
   async agregarItems(id, body) {
-    const pedido = await this.obtener(id);
+    const pedidoId = parsePositiveId(id, 'id', 'el pedido');
     const items = parseItems(requireBody(body).items);
+    return this.#conReintentos(async () => {
+      const pedido = await this.obtener(pedidoId);
+      return this.#aplicarItems(pedido, items);
+    });
+  }
 
+  async #aplicarItems(pedido, items) {
     if (!ESTADOS_PEDIDO_EDITABLES.includes(pedido.estado)) {
       throw new ConflictError(`El pedido está «${pedido.estado}» y ya no admite productos nuevos. Haz un pedido nuevo.`, 'PEDIDO_CERRADO');
     }
@@ -100,28 +113,40 @@ export class PedidoService {
       return { productoId, nombre, cantidad, precio, subtotal: lineSubtotal(precio, cantidad) };
     });
 
-    return this.pedidos.actualizarDetalles(pedido.id, {
+    const actualizado = await this.pedidos.actualizarDetalles(pedido.id, {
       detalles,
       total: sumAmounts(detalles.map((detalle) => detalle.subtotal)),
       estado: ESTADOS_PEDIDO.RECIBIDO,
-    });
+    }, pedido.version);
+    if (!actualizado) throw new NotFoundError(`El pedido ${pedido.id} no existe.`);
+    return actualizado;
   }
 
   /** Cambio de estado desde el panel del restaurante, respetando las transiciones permitidas. */
   async cambiarEstado(id, body) {
-    const pedido = await this.obtener(id);
+    const pedidoId = parsePositiveId(id, 'id', 'el pedido');
     const estado = parseEstadoPedido(requireBody(body).estado);
-    if (estado === pedido.estado) return pedido;
-    if (!TRANSICIONES_PEDIDO[pedido.estado].includes(estado)) {
-      throw new ConflictError(`No se puede pasar un pedido de «${pedido.estado}» a «${estado}».`, 'TRANSICION_INVALIDA');
-    }
-    return this.pedidos.actualizarEstado(pedido.id, estado);
+    return this.#conReintentos(async () => {
+      const pedido = await this.obtener(pedidoId);
+      if (estado === pedido.estado) return pedido;
+      if (!TRANSICIONES_PEDIDO[pedido.estado].includes(estado)) {
+        throw new ConflictError(`No se puede pasar un pedido de «${pedido.estado}» a «${estado}».`, 'TRANSICION_INVALIDA');
+      }
+      const actualizado = await this.pedidos.actualizarEstado(pedido.id, estado, pedido.version);
+      if (!actualizado) throw new NotFoundError(`El pedido ${pedido.id} no existe.`);
+      return actualizado;
+    });
   }
 
-  /** El pago individual queda para el siguiente incremento (alcance acordado del primer parcial). */
-  async solicitarPago(id) {
-    await this.obtener(id);
-    throw new NotImplementedError('El pago individual estará disponible en el siguiente incremento. Por ahora paga en caja.');
+  /** Repite una operación si chocó con otra solicitud simultánea (control optimista). */
+  async #conReintentos(operacion, intentos = 3) {
+    for (let intento = 1; ; intento += 1) {
+      try {
+        return await operacion();
+      } catch (error) {
+        if (!(error instanceof ConcurrencyError) || intento >= intentos) throw error;
+      }
+    }
   }
 
   async #armarDetalles(items) {

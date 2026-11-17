@@ -18,8 +18,9 @@ Abre `http://localhost:3000/api/salud`. Sin configurar nada arranca con **datos 
 | Comando | Para qué sirve |
 |---|---|
 | `npm start` | Inicia el servidor. |
+| `npm run start:prod` | Inicia el servidor con un supervisor que lo vuelve a levantar si se cae (para la demostración). |
 | `npm run dev` | Inicia y se reinicia solo al guardar cambios. |
-| `npm test` | Ejecuta las pruebas automáticas (48 casos). |
+| `npm test` | Ejecuta las pruebas automáticas (56 casos). |
 | `npm run test:mysql` | Prueba el repositorio MySQL contra una base real (requiere `DATA_SOURCE=mysql`). |
 
 ## Configuración
@@ -40,7 +41,7 @@ Si un valor es inválido (por ejemplo `DATA_SOURCE=mysql` sin `DB_USER`), el ser
 
 ### Usar MySQL
 
-1. Crear la base y las tablas con [docs/esquema-mysql.sql](docs/esquema-mysql.sql) (incluye los mismos datos de prueba).
+1. Crear la base y las tablas con [docs/esquema-mysql.sql](docs/esquema-mysql.sql) (incluye los mismos datos de prueba). Si la base se creó con la versión anterior del esquema, ejecutar además [docs/migraciones/001-version-y-fechas.sql](docs/migraciones/001-version-y-fechas.sql).
 2. En `.env`: `DATA_SOURCE=mysql` y los datos `DB_*`.
 3. `npm run test:mysql` para comprobar la conexión y el contrato; luego `npm start`.
 
@@ -70,9 +71,9 @@ HTTP ─► routes ─► controllers ─► services ─► repositories ─►
 
 | Carpeta | Responsabilidad |
 |---|---|
-| `src/routes` | Tabla de rutas de la API. |
-| `src/controllers` | Traducen la solicitud HTTP a una llamada de servicio y la respuesta a JSON. Sin reglas de negocio. |
-| `src/services` | Reglas de negocio: mesa abierta, comensal de la mesa, productos disponibles, cálculo de totales, transiciones de estado. |
+| `src/routes` | Un archivo de rutas por recurso (`mesas`, `productos`, `comensales`, `pedidos`, `pagos`, `salud`); `index.js` los monta. |
+| `src/controllers` | Un controlador por recurso: traduce la solicitud HTTP a una llamada de servicio y la respuesta a JSON. Sin reglas de negocio. |
+| `src/services` | Reglas de negocio: mesa abierta, comensal de la mesa, productos disponibles, cálculo de totales, transiciones de estado. `pago.service.js` es el módulo preparado para el siguiente incremento. |
 | `src/domain` | Validadores de entrada, reglas configurables, errores con su código HTTP y cálculo de montos en centavos. |
 | `src/repositories` | Acceso a datos. `contrato.js` define los métodos; `memory/` y `mysql/` lo implementan. |
 | `src/container.js` | Raíz de composición: elige la implementación de datos y conecta los servicios. |
@@ -83,7 +84,19 @@ HTTP ─► routes ─► controllers ─► services ─► repositories ─►
 - **Repositorio:** los servicios no saben si los datos están en memoria o en MySQL. Para usar otra base basta con otra implementación del contrato (`src/repositories/contrato.js`), que además se verifica al arrancar.
 - **Inyección de dependencias:** los servicios reciben sus repositorios y otros servicios por el constructor. Por eso las pruebas usan datos en memoria sin cambiar el código.
 - **Fábrica de la aplicación:** `createApp()` arma Express sin abrir puertos; lo usan el servidor y las pruebas.
-- **Manejo central de errores:** los servicios lanzan errores del dominio (`ValidationError`, `NotFoundError`, `ConflictError`) y un solo middleware los convierte en `{ codigo, mensaje, detalles }` con el código HTTP correcto.
+- **Manejo central de errores:** los servicios lanzan errores del dominio (`ValidationError`, `NotFoundError`, `ConflictError`, `ServiceUnavailableError`) y un solo middleware los convierte en `{ codigo, mensaje, detalles }` con el código HTTP correcto.
+- **Control de concurrencia optimista:** cada pedido tiene una `version`. Si dos solicitudes lo modifican al mismo tiempo, la segunda detecta el cambio, vuelve a leer y reintenta; ningún producto agregado se pierde.
+- **Módulos por recurso:** para agregar una funcionalidad (por ejemplo pagos) se crean su archivo de rutas, su controlador y su servicio, y se monta con una línea en `routes/index.js`, sin tocar los demás módulos.
+
+## Qué pasa cuando algo falla
+
+| Situación | Qué hace el backend |
+|---|---|
+| Datos inválidos en una solicitud | Responde 400/404/409 con un mensaje claro; las demás solicitudes no se ven afectadas. |
+| Error inesperado en una ruta | Responde 500 sin mostrar detalles internos y lo registra en la consola; el servidor sigue atendiendo. |
+| La base de datos no responde | Solo las rutas que la necesitan responden **503** «servicio no disponible»; `/api/salud` informa `degradado`. |
+| Error grave fuera de una solicitud | Se registra y el servidor se cierra en orden (termina lo que estaba atendiendo y cierra la base). Con `npm run start:prod` el supervisor lo vuelve a levantar en 1–15 s. |
+| Configuración incorrecta | El servidor no arranca y explica qué variable falta o está mal. |
 
 ## Reglas de negocio
 
@@ -97,12 +110,14 @@ HTTP ─► routes ─► controllers ─► services ─► repositories ─►
 | El producto existe y está disponible | `ProductoService.obtenerDisponibles` | 404 / 409 `PRODUCTO_NO_DISPONIBLE` |
 | **Precio y total se calculan con la base de datos**, nunca con lo que envía el celular | `PedidoService` | — |
 | Montos en centavos para evitar errores de redondeo | `domain/money.js` | — |
-| Un reenvío con la misma `Idempotency-Key` no duplica el pedido (**CA-07**) | `PedidoService.crear` | 200 con el pedido existente |
+| Un reenvío con la misma `Idempotency-Key` no duplica el pedido (**CA-07**); la clave vale solo para ese comensal | `PedidoService.crear` | 200 con el pedido existente |
+| Dos cambios simultáneos al mismo pedido no se pisan | `PedidoService` + `version` | Reintento automático; 409 `CONFLICTO_CONCURRENCIA` si persiste |
 | Estados: `recibido → en_preparacion → listo → entregado` (o `cancelado`) | `domain/rules.js` | 409 `TRANSICION_INVALIDA` |
 | Pagos y llamada al mesero: fuera del alcance del primer incremento | rutas | 501 `NO_DISPONIBLE` |
 
 ## Pruebas
 
 - `npm test` levanta la API en un puerto libre con datos en memoria nuevos para cada caso y prueba las rutas de punta a punta: pedido válido (CA-01), pedido vacío (CA-02), producto agotado, cantidad inválida, mesa cerrada, comensal de otra mesa, precio manipulado, idempotencia (CA-07), ampliar pedido, consulta del panel, cambios de estado y errores de formato.
-- `tests/repositorios.contrato.test.js` aplica las mismas pruebas a cualquier implementación de repositorio (memoria siempre; MySQL si está configurado).
+- `tests/resiliencia.test.js` simula fallas: base de datos caída (503 solo en esa ruta), error inesperado (500 sin detalles internos) y salud degradada.
+- `tests/repositorios.contrato.test.js` aplica las mismas pruebas a cualquier implementación de repositorio (memoria siempre; MySQL si está configurado), incluido el control de versión.
 - [postman/DEVORA.postman_collection.json](postman/DEVORA.postman_collection.json): colección para probar a mano el caso válido y los inválidos; cada solicitud guarda los ids que necesita la siguiente.

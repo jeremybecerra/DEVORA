@@ -1,4 +1,4 @@
-import { ConflictError, NotFoundError } from '../domain/errors.js';
+import { ConflictError, NotFoundError, NotImplementedError } from '../domain/errors.js';
 import { ESTADOS_MESA } from '../domain/rules.js';
 import { parseMesaId } from '../domain/validators.js';
 
@@ -27,5 +27,11 @@ export class MesaService {
       throw new ConflictError(`La ${mesa.nombre} está cerrada y no recibe pedidos. Pide ayuda al personal.`, 'MESA_CERRADA');
     }
     return mesa;
+  }
+
+  /** Llamar al mesero desde la app: previsto para el siguiente incremento. */
+  async llamarMesero(id) {
+    await this.obtener(id);
+    throw new NotImplementedError('Llamar al mesero desde la app estará disponible en el siguiente incremento.');
   }
 }

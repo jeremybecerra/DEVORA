@@ -2,13 +2,13 @@ import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
 import { apiNotFound, errorHandler, requestLogger, securityHeaders } from './middlewares/index.js';
-import { crearApiRouter } from './routes/api.routes.js';
+import { crearApiRouter } from './routes/index.js';
 
 /**
  * Crea la aplicación Express sin abrir ningún puerto. Así las pruebas pueden levantarla
  * con datos en memoria y el servidor real con MySQL, usando exactamente el mismo código.
  */
-export function createApp({ config, services, fuenteDatos, logger }) {
+export function createApp({ config, services, fuenteDatos, verificarSalud = async () => {}, logger }) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -25,7 +25,7 @@ export function createApp({ config, services, fuenteDatos, logger }) {
   }));
   app.use('/api', express.json({ limit: '100kb' }));
 
-  app.use('/api', crearApiRouter(services, { fuenteDatos }));
+  app.use('/api', crearApiRouter(services, { fuenteDatos, verificarSalud, logger }));
   app.use('/api', apiNotFound);
 
   // Opcional: servir el panel del restaurante y el frontend del comensal desde el mismo servidor.

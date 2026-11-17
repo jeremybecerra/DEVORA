@@ -1,9 +1,15 @@
 import mysql from 'mysql2/promise';
+import { ConcurrencyError } from '../../domain/errors.js';
+import { protegerConexion } from './conexion.js';
 
 /**
  * Implementación MySQL del contrato de repositorios.
  * Usa un pool de conexiones, consultas parametrizadas (evitan inyección SQL) y transacciones
  * cuando una operación escribe en más de una tabla. El esquema esperado está en docs/esquema-mysql.sql.
+ *
+ * Fechas: la aplicación envía siempre la hora en UTC (timezone 'Z') en lugar de depender de
+ * CURRENT_TIMESTAMP, que usa la zona horaria del servidor MySQL. Así la hora es la misma en
+ * cualquier computadora y el frontend la muestra en la hora local del comensal.
  */
 export async function crearRepositoriosMysql(dbConfig) {
   const pool = mysql.createPool({
@@ -14,6 +20,9 @@ export async function crearRepositoriosMysql(dbConfig) {
     database: dbConfig.database,
     connectionLimit: dbConfig.connectionLimit,
     waitForConnections: true,
+    queueLimit: 100,
+    connectTimeout: 5000,
+    enableKeepAlive: true,
     decimalNumbers: true,
     timezone: 'Z',
     charset: 'utf8mb4',
@@ -57,12 +66,13 @@ export async function crearRepositoriosMysql(dbConfig) {
     estado: fila.estado,
     fecha: iso(fila.creado_en),
     actualizadoEn: iso(fila.actualizado_en),
+    version: fila.version,
     detalles,
     total: Number(fila.total),
   });
 
   const SELECT_PEDIDO = `
-    SELECT p.id, p.mesa_id, p.comensal_id, c.nombre AS comensal_nombre, p.estado, p.total, p.creado_en, p.actualizado_en
+    SELECT p.id, p.mesa_id, p.comensal_id, c.nombre AS comensal_nombre, p.estado, p.total, p.version, p.creado_en, p.actualizado_en
     FROM pedidos p
     JOIN comensales c ON c.id = p.comensal_id`;
 
@@ -90,6 +100,12 @@ export async function crearRepositoriosMysql(dbConfig) {
     );
   }
 
+  /** Si el pedido existe pero no se actualizó, es porque otra solicitud lo cambió antes. */
+  async function lanzarSiCambio(ejecutor, id) {
+    const [filas] = await ejecutor.execute('SELECT id FROM pedidos WHERE id = ?', [Number(id)]);
+    if (filas.length) throw new ConcurrencyError();
+  }
+
   async function detallesDe(ids) {
     if (!ids.length) return new Map();
     const [filas] = await pool.query(
@@ -105,9 +121,10 @@ export async function crearRepositoriosMysql(dbConfig) {
     async crear({ mesaId, comensalId, estado, detalles, total, claveIdempotencia = null }) {
       try {
         const id = await enTransaccion(async (conexion) => {
+          const ahora = new Date();
           const [resultado] = await conexion.execute(
-            'INSERT INTO pedidos (mesa_id, comensal_id, estado, total, clave_idempotencia) VALUES (?, ?, ?, ?, ?)',
-            [mesaId, comensalId, estado, total, claveIdempotencia],
+            'INSERT INTO pedidos (mesa_id, comensal_id, estado, total, clave_idempotencia, creado_en, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [mesaId, comensalId, estado, total, claveIdempotencia, ahora, ahora],
           );
           await insertarDetalles(conexion, resultado.insertId, detalles);
           return resultado.insertId;
@@ -139,24 +156,41 @@ export async function crearRepositoriosMysql(dbConfig) {
       const detalles = await detallesDe(filas.map((fila) => fila.id));
       return filas.map((fila) => aPedido(fila, detalles.get(fila.id)));
     },
-    async actualizarDetalles(id, { detalles, total, estado }) {
+    async actualizarDetalles(id, { detalles, total, estado }, versionEsperada) {
       const actualizado = await enTransaccion(async (conexion) => {
-        const [resultado] = await conexion.execute('UPDATE pedidos SET total = ?, estado = ? WHERE id = ?', [total, estado, Number(id)]);
-        if (!resultado.affectedRows) return false;
+        // El UPDATE solo afecta la fila si nadie la cambió desde que se leyó (misma versión).
+        const [resultado] = await conexion.execute(
+          'UPDATE pedidos SET total = ?, estado = ?, version = version + 1, actualizado_en = ? WHERE id = ? AND version = ?',
+          [total, estado, new Date(), Number(id), versionEsperada],
+        );
+        if (!resultado.affectedRows) {
+          await lanzarSiCambio(conexion, id);
+          return false;
+        }
         await conexion.execute('DELETE FROM detalles_pedido WHERE pedido_id = ?', [Number(id)]);
         await insertarDetalles(conexion, Number(id), detalles);
         return true;
       });
       return actualizado ? pedidos.buscarPorId(id) : null;
     },
-    async actualizarEstado(id, estado) {
-      const [resultado] = await pool.execute('UPDATE pedidos SET estado = ? WHERE id = ?', [estado, Number(id)]);
-      return resultado.affectedRows ? pedidos.buscarPorId(id) : null;
+    async actualizarEstado(id, estado, versionEsperada) {
+      const [resultado] = await pool.execute(
+        'UPDATE pedidos SET estado = ?, version = version + 1, actualizado_en = ? WHERE id = ? AND version = ?',
+        [estado, new Date(), Number(id), versionEsperada],
+      );
+      if (!resultado.affectedRows) {
+        await lanzarSiCambio(pool, id);
+        return null;
+      }
+      return pedidos.buscarPorId(id);
     },
   };
 
-  return {
+  return protegerConexion({
     fuente: 'mysql',
+    async verificarSalud() {
+      await pool.query('SELECT 1');
+    },
     mesas: {
       async listar() {
         const [filas] = await pool.execute('SELECT id, nombre, estado FROM mesas ORDER BY id');
@@ -185,7 +219,10 @@ export async function crearRepositoriosMysql(dbConfig) {
     },
     comensales: {
       async crear({ mesaId, nombre }) {
-        const [resultado] = await pool.execute('INSERT INTO comensales (mesa_id, nombre) VALUES (?, ?)', [mesaId, nombre]);
+        const [resultado] = await pool.execute(
+          'INSERT INTO comensales (mesa_id, nombre, creado_en) VALUES (?, ?, ?)',
+          [mesaId, nombre, new Date()],
+        );
         return this.buscarPorId(resultado.insertId);
       },
       async buscarPorId(id) {
@@ -197,5 +234,5 @@ export async function crearRepositoriosMysql(dbConfig) {
     async cerrar() {
       await pool.end();
     },
-  };
+  });
 }

@@ -15,7 +15,12 @@
  * @typedef {{ productoId: number, nombre: string, cantidad: number, precio: number, subtotal: number }} DetallePedido
  *
  * @typedef {{ id: number, mesaId: string, comensalId: number, comensalNombre: string,
- *   estado: string, fecha: string, actualizadoEn: string, detalles: DetallePedido[], total: number }} Pedido
+ *   estado: string, fecha: string, actualizadoEn: string, version: number,
+ *   detalles: DetallePedido[], total: number }} Pedido
+ *
+ * Control de concurrencia optimista: cada pedido tiene una "version" que sube en cada cambio.
+ * actualizarDetalles y actualizarEstado reciben la versión que leyó el servicio; si en la base
+ * ya hay otra, lanzan ConcurrencyError en lugar de pisar el cambio de otra solicitud.
  *
  * @typedef {Object} MesaRepository
  * @property {() => Promise<Mesa[]>} listar
@@ -35,14 +40,15 @@
  * @property {(id: number) => Promise<Pedido|null>} buscarPorId
  * @property {(clave: string) => Promise<Pedido|null>} buscarPorClaveIdempotencia
  * @property {(filtros: { mesaId?: string, estado?: string }) => Promise<Pedido[]>} listar
- * @property {(id: number, datos: { detalles: DetallePedido[], total: number, estado: string }) => Promise<Pedido>} actualizarDetalles
- * @property {(id: number, estado: string) => Promise<Pedido>} actualizarEstado
+ * @property {(id: number, datos: { detalles: DetallePedido[], total: number, estado: string }, versionEsperada: number) => Promise<Pedido|null>} actualizarDetalles
+ * @property {(id: number, estado: string, versionEsperada: number) => Promise<Pedido|null>} actualizarEstado
  *
  * @typedef {Object} Repositorios
  * @property {MesaRepository} mesas
  * @property {ProductoRepository} productos
  * @property {ComensalRepository} comensales
  * @property {PedidoRepository} pedidos
+ * @property {() => Promise<void>} verificarSalud  Lanza un error si la fuente de datos no responde.
  * @property {() => Promise<void>} cerrar  Libera conexiones al apagar el servidor.
  */
 
@@ -61,7 +67,9 @@ export function verificarContrato(repositorios) {
       if (typeof repositorios?.[nombre]?.[metodo] !== 'function') faltantes.push(`${nombre}.${metodo}`);
     }
   }
-  if (typeof repositorios?.cerrar !== 'function') faltantes.push('cerrar');
+  for (const metodo of ['verificarSalud', 'cerrar']) {
+    if (typeof repositorios?.[metodo] !== 'function') faltantes.push(metodo);
+  }
   if (faltantes.length) throw new Error(`El repositorio no cumple el contrato. Faltan: ${faltantes.join(', ')}`);
   return repositorios;
 }

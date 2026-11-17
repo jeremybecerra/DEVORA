@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
+    "start:prod": "node scripts/supervisor.js",
     "dev": "node --watch src/server.js",
     "test": "node --test --test-reporter=spec \"tests/**/*.test.js\"",
     "test:mysql": "node --test --test-reporter=spec tests/repositorios.contrato.test.js"

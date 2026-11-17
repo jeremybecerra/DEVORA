@@ -18,17 +18,23 @@ Todos los errores responden con el mismo cuerpo. El frontend puede mostrar `mens
 |---|---|---|
 | 400 | `DATOS_INVALIDOS`, `JSON_INVALIDO` | Faltan datos, formato incorrecto o fuera de rango. `detalles` indica cada campo. |
 | 404 | `NO_ENCONTRADO`, `RUTA_NO_ENCONTRADA` | La mesa, producto, comensal, pedido o ruta no existe. |
-| 409 | `MESA_CERRADA`, `PRODUCTO_NO_DISPONIBLE`, `COMENSAL_OTRA_MESA`, `PEDIDO_CERRADO`, `TRANSICION_INVALIDA`, `CANTIDAD_MAXIMA` | La solicitud es correcta pero choca con el estado actual. |
+| 409 | `MESA_CERRADA`, `PRODUCTO_NO_DISPONIBLE`, `COMENSAL_OTRA_MESA`, `PEDIDO_CERRADO`, `TRANSICION_INVALIDA`, `CANTIDAD_MAXIMA`, `CONFLICTO_CONCURRENCIA` | La solicitud es correcta pero choca con el estado actual. |
 | 501 | `NO_DISPONIBLE` | Función prevista para un incremento posterior (pagos, llamar al mesero). |
-| 500 | `ERROR_INTERNO` | Error inesperado del servidor (se registra en la consola). |
+| 503 | `SERVICIO_NO_DISPONIBLE` | La base de datos no responde. Se puede reintentar en unos segundos; el resto de la API sigue funcionando. |
+| 500 | `ERROR_INTERNO` | Error inesperado del servidor (se registra en la consola, sin mostrar detalles internos). |
 
 ---
 
 ## Salud
 
 ### `GET /api/salud`
+Comprueba el servidor **y** la base de datos.
 ```json
-{ "estado": "ok", "fuenteDatos": "memory", "hora": "2026-11-16T14:05:00.000Z" }
+{ "estado": "ok", "baseDatos": "ok", "fuenteDatos": "mysql", "hora": "2026-11-16T14:05:00.000Z" }
+```
+Si la base de datos no responde: `503`
+```json
+{ "estado": "degradado", "baseDatos": "sin_conexion", "fuenteDatos": "mysql", "hora": "2026-11-16T14:05:00.000Z" }
 ```
 
 ## Mesas
@@ -85,7 +91,7 @@ Devuelve el comensal o `404`.
 ## Pedidos
 
 ### `POST /api/pedidos` → `201`
-Encabezado opcional: `Idempotency-Key: <texto único por envío>`. Si se repite la misma clave, responde `200` con el pedido ya creado y **no lo duplica**.
+Encabezado opcional: `Idempotency-Key: <texto único por envío>` (por ejemplo `crypto.randomUUID()`). Si el mismo comensal repite la misma clave, responde `200` con el pedido ya creado y **no lo duplica**. La clave vale solo para ese comensal: otro comensal con la misma clave crea su propio pedido.
 ```json
 {
   "mesaId": "01",
@@ -106,6 +112,7 @@ Respuesta (encabezado `Location: /api/pedidos/1`):
   "estado": "recibido",
   "fecha": "2026-11-16T14:06:00.000Z",
   "actualizadoEn": "2026-11-16T14:06:00.000Z",
+  "version": 1,
   "detalles": [
     { "productoId": 1, "nombre": "Silpancho", "cantidad": 1, "precio": 35, "subtotal": 35 },
     { "productoId": 4, "nombre": "Salteña de pollo", "cantidad": 2, "precio": 8, "subtotal": 16 }
@@ -114,6 +121,8 @@ Respuesta (encabezado `Location: /api/pedidos/1`):
 }
 ```
 - Los precios y el total los calcula el servidor con el menú; cualquier precio enviado se ignora.
+- Las fechas están en UTC (formato ISO 8601); el frontend las muestra en la hora local.
+- `version` sube cada vez que el pedido cambia (control de concurrencia).
 - Si un producto aparece dos veces en `items`, se suman las cantidades.
 
 Errores:
@@ -134,7 +143,7 @@ Devuelve el pedido (mismo formato) o `404`.
 Para el panel del restaurante. Parámetros opcionales: `mesaId=05`, `estado=recibido`. Ordenados del más reciente al más antiguo; cada pedido trae `comensalNombre`, `detalles` y `total`.
 
 ### `POST /api/pedidos/:id/items` → `200`
-Agrega productos a un pedido existente; si el producto ya estaba, suma la cantidad y recalcula el total.
+Agrega productos a un pedido existente; si el producto ya estaba, suma la cantidad y recalcula el total. Si dos solicitudes agregan productos al mismo tiempo, el servidor las aplica una detrás de otra y no se pierde ninguna.
 ```json
 { "items": [{ "productoId": 5, "cantidad": 1 }] }
 ```
@@ -149,7 +158,7 @@ Transiciones permitidas: `recibido → en_preparacion → listo → entregado`; 
 
 ## Fuera del alcance del primer incremento
 
-Responden `501 NO_DISPONIBLE` con un mensaje para el usuario:
+Responden `501 NO_DISPONIBLE` con un mensaje para el usuario (antes comprueban que el pedido o la mesa existan; si no, `404`):
 
 - `POST /api/pedidos/:id/pagos`
 - `GET /api/pagos/:id`

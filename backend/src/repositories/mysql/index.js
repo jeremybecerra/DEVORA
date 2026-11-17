@@ -6,6 +6,10 @@ import { protegerConexion } from './conexion.js';
  * Implementación MySQL del contrato de repositorios.
  * Usa un pool de conexiones, consultas parametrizadas (evitan inyección SQL) y transacciones
  * cuando una operación escribe en más de una tabla. El esquema esperado está en docs/esquema-mysql.sql.
+ *
+ * Fechas: la aplicación envía siempre la hora en UTC (timezone 'Z') en lugar de depender de
+ * CURRENT_TIMESTAMP, que usa la zona horaria del servidor MySQL. Así la hora es la misma en
+ * cualquier computadora y el frontend la muestra en la hora local del comensal.
  */
 export async function crearRepositoriosMysql(dbConfig) {
   const pool = mysql.createPool({
@@ -117,9 +121,10 @@ export async function crearRepositoriosMysql(dbConfig) {
     async crear({ mesaId, comensalId, estado, detalles, total, claveIdempotencia = null }) {
       try {
         const id = await enTransaccion(async (conexion) => {
+          const ahora = new Date();
           const [resultado] = await conexion.execute(
-            'INSERT INTO pedidos (mesa_id, comensal_id, estado, total, clave_idempotencia) VALUES (?, ?, ?, ?, ?)',
-            [mesaId, comensalId, estado, total, claveIdempotencia],
+            'INSERT INTO pedidos (mesa_id, comensal_id, estado, total, clave_idempotencia, creado_en, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [mesaId, comensalId, estado, total, claveIdempotencia, ahora, ahora],
           );
           await insertarDetalles(conexion, resultado.insertId, detalles);
           return resultado.insertId;
@@ -155,8 +160,8 @@ export async function crearRepositoriosMysql(dbConfig) {
       const actualizado = await enTransaccion(async (conexion) => {
         // El UPDATE solo afecta la fila si nadie la cambió desde que se leyó (misma versión).
         const [resultado] = await conexion.execute(
-          'UPDATE pedidos SET total = ?, estado = ?, version = version + 1 WHERE id = ? AND version = ?',
-          [total, estado, Number(id), versionEsperada],
+          'UPDATE pedidos SET total = ?, estado = ?, version = version + 1, actualizado_en = ? WHERE id = ? AND version = ?',
+          [total, estado, new Date(), Number(id), versionEsperada],
         );
         if (!resultado.affectedRows) {
           await lanzarSiCambio(conexion, id);
@@ -170,8 +175,8 @@ export async function crearRepositoriosMysql(dbConfig) {
     },
     async actualizarEstado(id, estado, versionEsperada) {
       const [resultado] = await pool.execute(
-        'UPDATE pedidos SET estado = ?, version = version + 1 WHERE id = ? AND version = ?',
-        [estado, Number(id), versionEsperada],
+        'UPDATE pedidos SET estado = ?, version = version + 1, actualizado_en = ? WHERE id = ? AND version = ?',
+        [estado, new Date(), Number(id), versionEsperada],
       );
       if (!resultado.affectedRows) {
         await lanzarSiCambio(pool, id);
@@ -214,7 +219,10 @@ export async function crearRepositoriosMysql(dbConfig) {
     },
     comensales: {
       async crear({ mesaId, nombre }) {
-        const [resultado] = await pool.execute('INSERT INTO comensales (mesa_id, nombre) VALUES (?, ?)', [mesaId, nombre]);
+        const [resultado] = await pool.execute(
+          'INSERT INTO comensales (mesa_id, nombre, creado_en) VALUES (?, ?, ?)',
+          [mesaId, nombre, new Date()],
+        );
         return this.buscarPorId(resultado.insertId);
       },
       async buscarPorId(id) {

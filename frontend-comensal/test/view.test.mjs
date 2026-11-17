@@ -107,11 +107,12 @@ test("efectivo avisa que el mesero va en camino sin pedir confirmación al clien
   assert.match(root.innerHTML, /No se realizará un cobro real/);
 });
 
-test("QR conserva la verificación de pago de prueba", () => {
+test("QR de demostración espera 10 segundos sin botón de confirmación", () => {
   const root = { innerHTML: "", focus() {} };
   const payment = { metodo: "qr", estado: "pendiente_pago", totalPagar: 42, propina: 0, qrUrl: null };
   new View(root, {}).pending({ nombre: "Mesa 01" }, payment, true);
-  assert.match(root.innerHTML, /data-action="check-payment"/);
+  assert.doesNotMatch(root.innerHTML, /data-action="check-payment"/);
+  assert.match(root.innerHTML, /10 segundos/);
 });
 
 test("efectivo real solo permite consultar el estado del servidor", () => {

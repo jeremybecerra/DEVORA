@@ -1,4 +1,4 @@
-import { ConcurrencyError, ConflictError, NotFoundError, NotImplementedError } from '../domain/errors.js';
+import { ConcurrencyError, ConflictError, NotFoundError } from '../domain/errors.js';
 import { lineSubtotal, sumAmounts } from '../domain/money.js';
 import { ESTADOS_PEDIDO, ESTADOS_PEDIDO_EDITABLES, RULES, TRANSICIONES_PEDIDO } from '../domain/rules.js';
 import {
@@ -147,12 +147,6 @@ export class PedidoService {
         if (!(error instanceof ConcurrencyError) || intento >= intentos) throw error;
       }
     }
-  }
-
-  /** El pago individual queda para el siguiente incremento (alcance acordado del primer parcial). */
-  async solicitarPago(id) {
-    await this.obtener(id);
-    throw new NotImplementedError('El pago individual estará disponible en el siguiente incremento. Por ahora paga en caja.');
   }
 
   async #armarDetalles(items) {

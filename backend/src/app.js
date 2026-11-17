@@ -2,7 +2,7 @@ import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
 import { apiNotFound, errorHandler, requestLogger, securityHeaders } from './middlewares/index.js';
-import { crearApiRouter } from './routes/api.routes.js';
+import { crearApiRouter } from './routes/index.js';
 
 /**
  * Crea la aplicación Express sin abrir ningún puerto. Así las pruebas pueden levantarla

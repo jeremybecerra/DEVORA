@@ -246,4 +246,16 @@ describe('Funciones fuera del alcance del primer incremento', () => {
     assert.equal(llamada.status, 501);
     assert.match(pago.body.mensaje, /siguiente incremento/);
   });
+
+  it('antes de responder 501 comprueban que el pedido o la mesa existan', async () => {
+    assert.equal((await api('POST', '/api/pedidos/999/pagos', { metodo: 'qr' })).status, 404);
+    assert.equal((await api('POST', '/api/mesas/99/llamadas', {})).status, 404);
+    assert.equal((await api('GET', '/api/pagos/1')).status, 501);
+  });
+
+  it('GET /api lista las rutas disponibles', async () => {
+    const { status, body } = await api('GET', '/api');
+    assert.equal(status, 200);
+    assert.ok(body.rutas.includes('POST /api/pedidos'));
+  });
 });
